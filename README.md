@@ -6,47 +6,55 @@ A command-line tool that processes raw event leads into scored, segmented, and e
 
 ---
 
-## 30-second quick start
+## How to run this CLI (practical steps)
+
+### 0) One-time setup
 
 ```bash
-cd /path/to/event-lead-cli && source .venv/bin/activate
+git clone https://github.com/saltism/event-lead-cli.git
+cd event-lead-cli
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 1) Per event: standard flow
+
+```bash
+# Put event CSV/XLSX files into data/
+
+# Generate config (event or meetup)
 python -m event_leads init-config --type event --name "Your Event Name" --date "2026-06-15" --location "Singapore"
+# python -m event_leads init-config --type meetup --name "Your Meetup Name" --date "2026-06-20" --location "Tokyo"
+
+# Set OpenAI key
+export OPENAI_API_KEY='sk-...'
+
+# Optional preflight check
+./scripts/smoke-test.sh configs/your-event-name.yaml
+
+# Run pipeline
 ./run_enrich.sh configs/your-event-name.yaml
 ```
 
----
-
-## Business card OCR (optional)
-
-If you have card photos, first convert them into a CSV source:
+### 2) If you also have business card photos
 
 ```bash
-python -m event_leads cards-ocr --input-dir data/cards --output-csv data/business-card.csv
-```
-
-Or run OCR and the full pipeline in one command:
-
-```bash
+# Put card images into data/cards/
 python -m event_leads cards-ocr-and-run configs/your-event-name.yaml --input-dir data/cards --output-csv data/business-card.csv
 ```
 
-Then add this source to your config:
+### 3) Output and resume
 
-```yaml
-sources:
-  business_card:
-    file: "business-card.csv"
-    type: csv
-    encoding: utf-8
-    mapping:
-      name: "name"
-      email: "email"
-      company_title: "company_title"
-      phone: "phone"
-    attendance_status: attended
+```bash
+# Output files are in configs/output/
+# - *-leads.csv
+# - *-report.md
+# - *-email-drafts.md
+
+# If interrupted
+./run_enrich.sh configs/your-event-name.yaml --resume
 ```
-
-Run the pipeline once after all sources are included, so scoring/segmentation stays consistent in a single pass.
 
 ---
 

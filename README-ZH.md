@@ -6,47 +6,55 @@
 
 ---
 
-## 30 秒快速开始
+## CLI 使用步骤（实操版）
+
+### 0）只做一次：安装
 
 ```bash
-cd /path/to/event-lead-cli && source .venv/bin/activate
+git clone https://github.com/saltism/event-lead-cli.git
+cd event-lead-cli
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 1）每场活动：标准流程
+
+```bash
+# 先把活动 CSV/XLSX 放进 data/
+
+# 生成配置（event 或 meetup 二选一）
 python -m event_leads init-config --type event --name "活动名称" --date "2026-06-15" --location "Singapore"
+# python -m event_leads init-config --type meetup --name "Meetup 名称" --date "2026-06-20" --location "Tokyo"
+
+# 设置 OpenAI key
+export OPENAI_API_KEY='sk-...'
+
+# 可选：先自检
+./scripts/smoke-test.sh configs/活动名称.yaml
+
+# 开跑
 ./run_enrich.sh configs/活动名称.yaml
 ```
 
----
-
-## 名片 OCR（可选）
-
-如果你有名片照片，先转成一个 CSV 数据源：
+### 2）如果还有名片照片
 
 ```bash
-python -m event_leads cards-ocr --input-dir data/cards --output-csv data/business-card.csv
+# 把名片图片放进 data/cards/
+python -m event_leads cards-ocr-and-run configs/活动名称.yaml --input-dir data/cards --output-csv data/business-card.csv
 ```
 
-或者一条命令直接跑 OCR + 主流程：
+### 3）结果和续跑
 
 ```bash
-python -m event_leads cards-ocr-and-run configs/新活动名称.yaml --input-dir data/cards --output-csv data/business-card.csv
+# 输出在 configs/output/
+# - *-leads.csv
+# - *-report.md
+# - *-email-drafts.md
+
+# 中断后续跑
+./run_enrich.sh configs/活动名称.yaml --resume
 ```
-
-然后在 config 里加入这个 source：
-
-```yaml
-sources:
-  business_card:
-    file: "business-card.csv"
-    type: csv
-    encoding: utf-8
-    mapping:
-      name: "name"
-      email: "email"
-      company_title: "company_title"
-      phone: "phone"
-    attendance_status: attended
-```
-
-把所有来源都加好后再统一跑一次 pipeline，这样评分和分组会在同一轮里完成，不会出现两套结果。
 
 ---
 
