@@ -16,6 +16,40 @@ python -m event_leads init-config --type event --name "Your Event Name" --date "
 
 ---
 
+## Business card OCR (optional)
+
+If you have card photos, first convert them into a CSV source:
+
+```bash
+python -m event_leads cards-ocr --input-dir data/cards --output-csv data/business-card.csv
+```
+
+Or run OCR and the full pipeline in one command:
+
+```bash
+python -m event_leads cards-ocr-and-run configs/your-event-name.yaml --input-dir data/cards --output-csv data/business-card.csv
+```
+
+Then add this source to your config:
+
+```yaml
+sources:
+  business_card:
+    file: "business-card.csv"
+    type: csv
+    encoding: utf-8
+    mapping:
+      name: "name"
+      email: "email"
+      company_title: "company_title"
+      phone: "phone"
+    attendance_status: attended
+```
+
+Run the pipeline once after all sources are included, so scoring/segmentation stays consistent in a single pass.
+
+---
+
 ## Output
 
 Each run produces three files in `configs/output/`:

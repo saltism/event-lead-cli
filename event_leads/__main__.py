@@ -4,6 +4,7 @@ import re
 import yaml
 
 from .pipeline import run
+from .cards_ocr import run_cards_ocr
 
 
 @click.group()
@@ -66,6 +67,72 @@ def init_config(template_type, name, date, location, output_path, force):
 
     click.echo(f'Config created: {target}')
     click.echo(f'Run with: ./run_enrich.sh {target}')
+
+
+@cli.command('cards-ocr')
+@click.option('--input-dir', default='data/cards', show_default=True, help='Directory containing business card images.')
+@click.option('--output-csv', default='data/business-card.csv', show_default=True, help='Output CSV file path.')
+@click.option('--model', default='gpt-4o-mini', show_default=True, help='Vision-capable model for OCR extraction.')
+def cards_ocr(input_dir, output_csv, model):
+    """Extract card contacts from images into a CSV file."""
+    run_cards_ocr(input_dir=input_dir, output_csv=output_csv, model=model)
+
+
+def _upsert_card_source(config_path: Path, output_csv: str) -> None:
+    with open(config_path, 'r', encoding='utf-8') as f:
+        cfg = yaml.safe_load(f) or {}
+
+    data_dir = (config_path.parent / cfg.get('data_dir', '.')).resolve()
+    out_path = Path(output_csv).expanduser()
+    if not out_path.is_absolute():
+        out_path = (Path.cwd() / out_path).resolve()
+    else:
+        out_path = out_path.resolve()
+
+    try:
+        file_value = str(out_path.relative_to(data_dir))
+    except ValueError:
+        file_value = str(out_path)
+
+    cfg.setdefault('sources', {})
+    source_name = 'business_card_ocr'
+    source_cfg = cfg['sources'].get(source_name, {})
+    source_cfg.update({
+        'file': file_value,
+        'type': 'csv',
+        'encoding': 'utf-8',
+        'mapping': {
+            'name': 'name',
+            'email': 'email',
+            'company_title': 'company_title',
+            'phone': 'phone',
+        },
+        'attendance_status': 'attended',
+    })
+    cfg['sources'][source_name] = source_cfg
+
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
+
+
+@cli.command('cards-ocr-and-run')
+@click.argument('config', type=click.Path(exists=True))
+@click.option('--input-dir', default='data/cards', show_default=True, help='Directory containing business card images.')
+@click.option('--output-csv', default='data/business-card.csv', show_default=True, help='Output CSV file path.')
+@click.option('--model', default='gpt-4o-mini', show_default=True, help='Vision-capable model for OCR extraction.')
+@click.option('--no-update-config', is_flag=True, default=False, help='Do not inject OCR source into config.')
+@click.option('--resume', is_flag=True, default=False, help='Resume pipeline from checkpoints where possible.')
+@click.option('--output', '-o', default=None, help='Output directory (default: output/ next to config)')
+def cards_ocr_and_run(config, input_dir, output_csv, model, no_update_config, resume, output):
+    """Run card OCR, optionally patch config source, then execute full enriched pipeline."""
+    run_cards_ocr(input_dir=input_dir, output_csv=output_csv, model=model)
+
+    cfg_path = Path(config).resolve()
+    if not no_update_config:
+        _upsert_card_source(cfg_path, output_csv)
+        click.echo(f'Config updated with source: business_card_ocr -> {output_csv}')
+
+    run(str(cfg_path), output, enrich=True, resume=resume)
 
 
 if __name__ == '__main__':

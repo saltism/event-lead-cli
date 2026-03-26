@@ -16,6 +16,40 @@ python -m event_leads init-config --type event --name "活动名称" --date "202
 
 ---
 
+## 名片 OCR（可选）
+
+如果你有名片照片，先转成一个 CSV 数据源：
+
+```bash
+python -m event_leads cards-ocr --input-dir data/cards --output-csv data/business-card.csv
+```
+
+或者一条命令直接跑 OCR + 主流程：
+
+```bash
+python -m event_leads cards-ocr-and-run configs/新活动名称.yaml --input-dir data/cards --output-csv data/business-card.csv
+```
+
+然后在 config 里加入这个 source：
+
+```yaml
+sources:
+  business_card:
+    file: "business-card.csv"
+    type: csv
+    encoding: utf-8
+    mapping:
+      name: "name"
+      email: "email"
+      company_title: "company_title"
+      phone: "phone"
+    attendance_status: attended
+```
+
+把所有来源都加好后再统一跑一次 pipeline，这样评分和分组会在同一轮里完成，不会出现两套结果。
+
+---
+
 ## 输出文件
 
 每次运行后，`configs/output/` 目录下会生成三个文件：
