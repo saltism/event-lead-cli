@@ -1,6 +1,7 @@
 """LLM enrichment and segmentation using Instructor + OpenAI."""
 
 import asyncio
+import os
 from typing import List, Optional
 
 import instructor
@@ -321,11 +322,33 @@ def detect_language(row) -> str:
 # ---------------------------------------------------------------------------
 
 def _get_client():
-    return instructor.from_openai(OpenAI())
+    return instructor.from_openai(OpenAI(**_openai_client_kwargs()))
 
 
 def _get_async_client():
-    return instructor.from_openai(AsyncOpenAI())
+    return instructor.from_openai(AsyncOpenAI(**_openai_client_kwargs()))
+
+
+def _openai_client_kwargs() -> dict:
+    """Load OpenAI settings from env and fail fast on malformed values.
+
+    This avoids obscure httpx UnicodeEncodeError when a copied key/base URL
+    contains full-width punctuation or invisible unicode whitespace.
+    """
+    api_key = os.getenv('OPENAI_API_KEY', '').strip()
+    base_url = os.getenv('OPENAI_BASE_URL', '').strip()
+
+    if not api_key:
+        raise ValueError('OPENAI_API_KEY is missing. Please export a valid API key.')
+    if any(ord(ch) > 127 for ch in api_key):
+        raise ValueError('OPENAI_API_KEY contains non-ASCII characters. Re-copy it as plain text.')
+    if base_url and any(ord(ch) > 127 for ch in base_url):
+        raise ValueError('OPENAI_BASE_URL contains non-ASCII characters. Re-copy it as plain text.')
+
+    kwargs = {'api_key': api_key}
+    if base_url:
+        kwargs['base_url'] = base_url
+    return kwargs
 
 
 def _get_dims(config) -> list:
@@ -472,6 +495,11 @@ def enrich_leads(df: pd.DataFrame, batch_size: int = 8, config: Optional[dict] =
     n_batches = (len(leads_data) + batch_size - 1) // batch_size
     print(f"  {len(leads_data)} leads → {n_batches} batches (concurrency=10)")
     all_enrichments = asyncio.run(_enrich_all_async(leads_data, batch_size, system_prompt))
+    if leads_data and not all_enrichments:
+        raise RuntimeError(
+            "LLM enrichment returned 0 results. Check OPENAI_API_KEY/OPENAI_BASE_URL and retry. "
+            "No checkpoint was saved for enrich stage."
+        )
 
     enrichment_map = {e.email.lower(): e for e in all_enrichments}
 
@@ -582,6 +610,11 @@ def generate_segment_report(df: pd.DataFrame, config: Optional[dict] = None) -> 
     client = _get_client()
     dims = _get_dims(config)
     df = df.copy()
+    event = (config or {}).get('event', {})
+    if '_event_name' not in df.columns:
+        df['_event_name'] = event.get('name', 'Event')
+    if '_event_date' not in df.columns:
+        df['_event_date'] = event.get('date', '')
     df['_lang'] = df.apply(detect_language, axis=1)
     report_lang = _select_report_language(df, config)
     report_lang_instruction = REPORT_LANGUAGE_INSTRUCTIONS.get(report_lang, 'English')

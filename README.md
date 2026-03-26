@@ -291,6 +291,26 @@ export OPENAI_API_KEY="sk-..."
 ./run_enrich.sh configs/your-event-name.yaml --resume
 ```
 
+**`UnicodeEncodeError: 'ascii' codec can't encode characters ...`**
+
+Your `OPENAI_API_KEY` or `OPENAI_BASE_URL` likely contains non-ASCII characters (for example smart quotes, full-width symbols, or hidden spaces from copy/paste). Re-export them as plain ASCII:
+
+```bash
+unset OPENAI_API_KEY OPENAI_BASE_URL
+export OPENAI_API_KEY='sk-...'
+# Optional:
+# export OPENAI_BASE_URL='https://your-provider-endpoint/v1'
+```
+
+**`CONFIG` path does not exist**
+
+Generate the config first, then run:
+
+```bash
+python -m event_leads init-config --type event --name "Your Event Name" --date "2026-06-15" --location "Your City"
+./run_enrich.sh configs/your-event-name.yaml
+```
+
 **Garbled text or encoding errors**
 
 Set `encoding: utf-8-sig` in the source config. For Traditional Chinese exports from Taiwan-based systems, try `big5`.

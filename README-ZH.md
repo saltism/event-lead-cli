@@ -287,6 +287,26 @@ export OPENAI_API_KEY="sk-..."
 ./run_enrich.sh configs/新活动名称.yaml --resume
 ```
 
+**报错 `UnicodeEncodeError: 'ascii' codec can't encode characters ...`**
+
+通常是 `OPENAI_API_KEY` 或 `OPENAI_BASE_URL` 里混入了非 ASCII 字符（例如中文引号、全角符号、不可见空格）。重新用纯文本设置：
+
+```bash
+unset OPENAI_API_KEY OPENAI_BASE_URL
+export OPENAI_API_KEY='sk-...'
+# 如需自定义服务商：
+# export OPENAI_BASE_URL='https://your-provider-endpoint/v1'
+```
+
+**提示 `CONFIG` 路径不存在**
+
+先生成配置文件，再运行：
+
+```bash
+python -m event_leads init-config --type event --name "活动名称" --date "2026-06-15" --location "Your City"
+./run_enrich.sh configs/活动名称对应slug.yaml
+```
+
 **出现乱码或编码错误**
 
 将对应数据源的 `encoding` 改为 `utf-8-sig`。台湾繁体系统导出的文件可尝试 `big5`。
