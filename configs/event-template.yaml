@@ -30,31 +30,28 @@ dedup:
 scoring:
   dimensions:
     - id: company_fit
-      label: 公司匹配度
+      label: Company fit
       description: >
-        公司規模和行業是否符合 Dify 的目標客戶（需要 AI 工具的中大型企業，有 IT 部門）。
-        上市公司、金融、製造、科技、醫療等行業加分；小微企業或個人創業者低分。
+        How well the company profile matches Dify ICP.
+        Mid/large enterprises with IT teams score higher than very small businesses.
       weight: 0.25
     - id: seniority_match
-      label: 職級決策力
+      label: Seniority match
       description: >
-        職位是否具備預算決策或採購影響力。
-        CIO / CTO / CISO / 資訊長 / 副總 / 總經理 = 高分；
-        經理 / 主任 = 中分；工程師 / 職位不明 = 低分。
+        Whether this contact has budget ownership or procurement influence.
+        Decision-makers and department heads score higher.
       weight: 0.25
     - id: engagement_signal
-      label: 互動意圖
+      label: Engagement signal
       description: >
-        現場表態的積極程度。
-        「是，請聯繫我安排」= 最高；「先發資料看看」+ 時程 1-3 個月 = 中高；
-        「先發資料看看」+ 無計畫 = 中；「暫不需要」= 低。
+        How strong the follow-up intent is.
+        Explicit demo requests and clear near-term timelines score higher.
       weight: 0.35
     - id: interest_alignment
-      label: 需求契合度
+      label: Interest alignment
       description: >
-        興趣方向是否與 Dify 的核心能力直接匹配。
-        流程自動化 / 工作流、內部知識庫 / 智能客服、AI Agent = 高分；
-        數據分析、銷售管理 = 中分；程式碼輔助、其他 = 較低分。
+        How closely the stated use cases map to Dify core capabilities.
+        Workflow automation, knowledge assistant, and agent orchestration score higher.
       weight: 0.15
 
 output:

@@ -5,3 +5,4 @@ click
 openpyxl
 instructor
 openai
+eval_type_backport

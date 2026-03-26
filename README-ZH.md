@@ -13,7 +13,7 @@
 | 文件 | 对象 | 内容 |
 |------|------|------|
 | `{前缀}-leads.csv` | BD / 销售 | 清洗后的完整线索列表，含 `_segment` 分组列，可直接导入 HubSpot |
-| `{前缀}-report.md` | BD / 销售 | 各分组说明、跟进建议及每条线索的评分明细 |
+| `{前缀}-report.md` | BD / 销售 | 各分组说明、跟进建议、紧凑评分表，报告语种按线索语种自动选择 |
 | `{前缀}-email-drafts.md` | BD / 销售 | 按分组和语言自动生成的跟进邮件草稿（英文 / 日文 / 繁体中文） |
 
 ---
@@ -74,7 +74,8 @@ event-lead-cli/
 ├── requirements.txt
 ├── data/                        ← 将 CSV/Excel 文件放在这里
 ├── configs/
-│   ├── event-template.yaml       ← 配置模板
+│   ├── event-template.yaml       ← 展会 / conference 模板
+│   ├── meetup-template.yaml      ← meetup / 社群活动模板
 │   └── output/                  ← 输出文件自动生成在这里
 └── event_leads/                 ← 源代码，无需修改
 ```
@@ -84,7 +85,7 @@ event-lead-cli/
 打开终端，进入项目目录后执行：
 
 ```bash
-cd /path/to/event-lead-agent
+cd /path/to/event-lead-cli
 # macOS 技巧：直接将文件夹拖入终端窗口，路径会自动填入
 
 python3 -m venv .venv
@@ -118,13 +119,16 @@ source ~/.zshrc
 - 展会扫码系统导出 → 通常为 Excel
 - HubSpot 名片扫描导出 → CSV
 
-### 第二步 — 创建活动配置文件
+### 第二步 — 创建活动配置文件（不用手动维护模板）
 
-以模板为基础复制一份并重命名：
+直接用内置模板生成配置文件：
 
 ```bash
-cp configs/event-template.yaml configs/新活动名称.yaml
+python -m event_leads init-config --type event --name "活动名称" --date "2026-06-15" --location "Singapore"
+python -m event_leads init-config --type meetup --name "Meetup 名称" --date "2026-06-20" --location "Tokyo"
 ```
+
+命令会自动生成 `configs/<slug>.yaml`，并填好 `event` 与 `output.filename_prefix`。
 
 打开新文件，修改以下内容：
 
@@ -153,6 +157,7 @@ sources:
 
 output:
   filename_prefix: "新活动名称"
+  report_language: "auto"         # auto / en / ja / zh_tw
 ```
 
 如需引入多个数据源，在 `sources:` 下继续添加：
@@ -178,7 +183,7 @@ sources:
 ./run_enrich.sh configs/新活动名称.yaml
 ```
 
-终端会实时打印各阶段进度。评分阶段并发执行，约 40 条线索需 2–4 分钟，800 条线索约 2 分钟以内。
+终端会实时打印各阶段进度。评分阶段并发执行，约 40 条线索需 2–4 分钟，800 条线索约 2 分钟以内。一次命令会自动产出三份文件：`*-leads.csv`、`*-report.md`、`*-email-drafts.md`。
 
 **若中途中断**（网络问题、API 超时等），使用 `--resume` 参数续跑，无需重新调用 LLM：
 
@@ -190,8 +195,8 @@ sources:
 
 打开 `configs/output/` 目录，确认以下内容：
 
-- **report.md** — 分组定义和跟进建议是否合理
-- **email-drafts.md** — 确认各线索的语言检测是否正确
+- **report.md** — 分组定义和跟进建议是否合理；报告语种会按线索主语种自动选择
+- **email-drafts.md** — 确认生成的语种组别（单语 / 双语 / 三语）是否符合线索构成
 - **leads.csv** — 用 Excel 打开，确认所有行的 `_segment` 列均有值
 
 ---
@@ -247,7 +252,7 @@ sources:
 
 ### 评分维度
 
-LLM 对每条线索在四个维度上打分（0–10）。每个维度的分数旁边附带一句评分依据（繁体中文），说明给出该分数的原因。综合得分为加权平均值。权重之和须为 1.0，可在配置文件的 `scoring:` 部分按活动调整。
+LLM 对每条线索在四个维度上打分（0–10）。每个维度都附带一句评分依据，说明给出该分数的原因。综合得分为加权平均值。权重之和须为 1.0，可在配置文件的 `scoring:` 部分按活动调整。
 
 | 维度 | 默认权重 | 评估内容 | 依据示例 |
 |------|----------|----------|----------|
@@ -290,6 +295,16 @@ export OPENAI_API_KEY="sk-..."
 
 语言根据姓名字符和邮箱域名推断：包含中文字符 → `zh_tw`，`.jp` 域名或包含日文字符 → `ja`，其他 → `en`。如需覆盖，在输出 CSV 的 `_lang` 列手动修改后再导入。
 
+**报告语种不是你想要的**
+
+默认按线索主语种自动选择报告语言（`en` / `ja` / `zh_tw`）。如需固定语种，可在配置里指定：
+
+```yaml
+output:
+  filename_prefix: "新活动名称"
+  report_language: "en"   # en / ja / zh_tw / auto
+```
+
 ---
 
 ## 项目结构
@@ -302,7 +317,8 @@ event-lead-cli/
 ├── requirements.txt
 ├── data/                    ← 原始 CSV/Excel 数据文件
 ├── configs/
-│   ├── event-template.yaml  ← 配置模板
+│   ├── event-template.yaml   ← 展会 / conference 模板
+│   ├── meetup-template.yaml  ← meetup / 社群活动模板
 │   └── output/
 │       ├── checkpoints/     ← 断点续跑的中间状态文件（运行完成后可删除）
 │       ├── *-leads.csv

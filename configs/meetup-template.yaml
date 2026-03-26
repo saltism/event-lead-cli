@@ -1,0 +1,66 @@
+event:
+  name: "Your Meetup Name"
+  date: "2026-06-20"
+  location: "Your City"
+
+# Path is relative to this config file.
+data_dir: "../data"
+
+sources:
+  signup_form:
+    file: "meetup-signups.csv"
+    type: csv
+    encoding: utf-8
+    mapping:
+      timestamp: "Timestamp"
+      name: "Full Name"
+      company_title: "Company + Title"
+      email: "Email Address"
+    survey_fields:
+      interest_scenario: "What AI topic are you most interested in?"
+      demo_interest: "Would you like a product walkthrough?"
+      project_timeline: "When do you plan to test or launch?"
+      additional_topics: "Anything else you want to learn?"
+    attendance_status: registered
+
+  checkin_list:
+    file: "meetup-checkins.xlsx"
+    type: xlsx
+    mapping:
+      name: "Name"
+      email: "Email"
+      company_title: "Company / Title"
+    attendance_status: attended
+
+dedup:
+  email_exact: true
+  fuzzy_threshold: 85
+
+scoring:
+  dimensions:
+    - id: company_fit
+      label: Company fit
+      description: >
+        How well the company profile matches Dify ICP.
+        Mid/large enterprises with IT teams score higher than very small businesses.
+      weight: 0.20
+    - id: seniority_match
+      label: Seniority match
+      description: >
+        Whether this contact has enough influence to start internal trials or team adoption.
+      weight: 0.20
+    - id: engagement_signal
+      label: Engagement signal
+      description: >
+        Meetup interaction strength: attended in person, asked concrete questions,
+        requested follow-up, or shared clear next steps.
+      weight: 0.40
+    - id: interest_alignment
+      label: Interest alignment
+      description: >
+        How closely stated interests match Dify core use cases such as workflow,
+        knowledge assistant, and agent orchestration.
+      weight: 0.20
+
+output:
+  filename_prefix: "your-meetup-name"

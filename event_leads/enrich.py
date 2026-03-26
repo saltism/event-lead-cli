@@ -193,7 +193,7 @@ Rules:
 - thresholds must cover the FULL range 0–10 with no gaps.
   The top segment's max_score must be 10.0; the bottom segment's min_score must be 0.0.
 - Base boundaries on natural breaks in the provided score list, not on fixed quartiles.
-- recommended_action and hubspot_suggestion must be actionable and specific (Traditional Chinese).
+- recommended_action and hubspot_suggestion must be actionable and specific.
 - Do NOT assign individual leads — only define the thresholds.
 """
 
@@ -207,6 +207,87 @@ LANG_INSTRUCTIONS = {
     'zh_tw': 'Traditional Chinese (Taiwan) — formal business tone (繁體中文，敬語)',
     'en': 'English — professional and warm',
     'ja': 'Japanese — 敬語 (keigo), business formal',
+}
+
+REPORT_LANGUAGE_INSTRUCTIONS = {
+    'en': 'English',
+    'ja': 'Japanese',
+    'zh_tw': 'Traditional Chinese (Taiwan)',
+}
+
+REPORT_COPY = {
+    'en': {
+        'title_suffix': 'Lead processing report',
+        'overview': 'Overview',
+        'total_leads': 'Total leads',
+        'scoring_method': 'Scoring method',
+        'scoring_intro_1': 'Each lead is scored on the dimensions below (0-10), and the overall score is a weighted average.',
+        'scoring_intro_2': 'Detailed per-dimension reasons are available in the CSV columns: `_score_*_reason`.',
+        'dim_col': 'Dimension',
+        'weight_col': 'Weight',
+        'criteria_col': 'Criteria',
+        'scores_overview': 'Lead score overview',
+        'name': 'Name',
+        'company': 'Company',
+        'title': 'Title',
+        'email': 'Email',
+        'overall': 'Overall',
+        'segment': 'Segment',
+        'demo': 'Demo',
+        'timeline': 'Timeline',
+        'features': 'Characteristics',
+        'action': 'Recommended action',
+        'hubspot': 'HubSpot operation',
+        'reason_note': 'Detailed scoring reasons are in CSV columns: `_score_*_reason`.',
+    },
+    'ja': {
+        'title_suffix': 'リード処理レポート',
+        'overview': '概要',
+        'total_leads': '総リード数',
+        'scoring_method': 'スコアリング方法',
+        'scoring_intro_1': '各リードを以下の指標で 0-10 点評価し、総合点は重み付き平均で計算します。',
+        'scoring_intro_2': '各指標の詳細理由は CSV の `_score_*_reason` 列を参照してください。',
+        'dim_col': '指標',
+        'weight_col': '重み',
+        'criteria_col': '評価基準',
+        'scores_overview': 'リードスコア一覧',
+        'name': '氏名',
+        'company': '会社',
+        'title': '役職',
+        'email': 'メール',
+        'overall': '総合',
+        'segment': 'セグメント',
+        'demo': 'デモ',
+        'timeline': '時期',
+        'features': '特徴',
+        'action': '推奨アクション',
+        'hubspot': 'HubSpot 操作',
+        'reason_note': '詳細な採点理由は CSV の `_score_*_reason` 列にあります。',
+    },
+    'zh_tw': {
+        'title_suffix': '線索處理報告',
+        'overview': '概覽',
+        'total_leads': '總線索',
+        'scoring_method': '評分方法說明',
+        'scoring_intro_1': '每條線索依據以下維度評分（0-10 分），綜合分為加權平均。',
+        'scoring_intro_2': '逐維度評分依據可在 CSV 的 `_score_*_reason` 欄位查看。',
+        'dim_col': '維度',
+        'weight_col': '權重',
+        'criteria_col': '評分標準',
+        'scores_overview': '線索評分總覽',
+        'name': '姓名',
+        'company': '公司',
+        'title': '職位',
+        'email': 'Email',
+        'overall': '綜合',
+        'segment': 'Segment',
+        'demo': 'Demo',
+        'timeline': '時程',
+        'features': '特徵',
+        'action': '建議動作',
+        'hubspot': 'HubSpot 操作',
+        'reason_note': '各維度評分依據詳見 CSV 的 `_score_*_reason` 欄位。',
+    },
 }
 
 
@@ -266,6 +347,21 @@ def _compute_overall(scores: LeadScores, dims: list) -> float:
         for dim_id, w in weight_map.items()
     )
     return round(total / total_w, 1)
+
+
+def _select_report_language(df: pd.DataFrame, config: Optional[dict]) -> str:
+    """Pick report language by config override or lead-language majority."""
+    output_cfg = (config or {}).get('output', {})
+    forced = str(output_cfg.get('report_language', 'auto')).strip().lower()
+    if forced in ('en', 'ja', 'zh_tw'):
+        return forced
+
+    lang_counts = df['_lang'].value_counts()
+    if lang_counts.empty:
+        return 'en'
+
+    top_lang = str(lang_counts.index[0])
+    return top_lang if top_lang in REPORT_COPY else 'en'
 
 
 def _format_leads(leads: list) -> str:
@@ -485,6 +581,10 @@ def generate_segment_report(df: pd.DataFrame, config: Optional[dict] = None) -> 
     """
     client = _get_client()
     dims = _get_dims(config)
+    df = df.copy()
+    df['_lang'] = df.apply(detect_language, axis=1)
+    report_lang = _select_report_language(df, config)
+    report_lang_instruction = REPORT_LANGUAGE_INSTRUCTIONS.get(report_lang, 'English')
 
     scores = sorted(df['_score_overall'].tolist(), reverse=True)
     score_stats = (
@@ -502,18 +602,17 @@ def generate_segment_report(df: pd.DataFrame, config: Optional[dict] = None) -> 
             {"role": "system", "content": THRESHOLD_SYSTEM_PROMPT},
             {"role": "user", "content": (
                 f"Lead pool score distribution:\n{score_stats}\n\n"
-                "Define 3–4 segments with score thresholds covering 0–10."
+                f"Define 3–4 segments with score thresholds covering 0–10.\n"
+                f"Write all output fields in: {report_lang_instruction}."
             )},
         ],
         max_retries=2,
     )
 
-    df = df.copy()
     df['_segment'] = _map_to_segments(df, thresholds_result.thresholds)
-    df['_lang'] = df.apply(detect_language, axis=1)
 
     report = _build_report_from_thresholds(thresholds_result, df)
-    md = _render_report_markdown(report, df, dims)
+    md = _render_report_markdown(report, df, dims, report_lang)
     return df, md, report
 
 
@@ -593,7 +692,10 @@ Rules:
 # Report renderers
 # ---------------------------------------------------------------------------
 
-def _render_report_markdown(report: SegmentReport, df: pd.DataFrame, dims: list) -> str:
+def _render_report_markdown(
+    report: SegmentReport, df: pd.DataFrame, dims: list, report_lang: str = 'en'
+) -> str:
+    copy = REPORT_COPY.get(report_lang, REPORT_COPY['en'])
     event_name = df['_event_name'].iloc[0] if '_event_name' in df.columns else 'Event'
     event_date = df['_event_date'].iloc[0] if '_event_date' in df.columns else ''
 
@@ -602,21 +704,21 @@ def _render_report_markdown(report: SegmentReport, df: pd.DataFrame, dims: list)
         for d in dims
     )
     lines = [
-        f"# {event_name} — 線索處理報告",
+        f"# {event_name} — {copy['title_suffix']}",
         "",
         f"> Generated by Event Lead CLI v0.5 | {event_date}",
         "",
-        "## 概覽",
+        f"## {copy['overview']}",
         "",
-        f"- 總線索：**{len(df)}**（去重後）",
+        f"- {copy['total_leads']}: **{len(df)}**",
         f"- {report.overview}",
         "",
-        "## 評分方法說明",
+        f"## {copy['scoring_method']}",
         "",
-        "每條線索依據以下四個維度評分（0–10 分），綜合分為加權平均。",
-        "每個維度的分數皆由 LLM 根據問卷回答與線索資料判定，並在 CSV 中附有逐條評分依據（`_score_*_reason` 欄位），供需要深入了解時查閱。",
+        copy['scoring_intro_1'],
+        copy['scoring_intro_2'],
         "",
-        "| 維度 | 權重 | 評分標準 |",
+        f"| {copy['dim_col']} | {copy['weight_col']} | {copy['criteria_col']} |",
         "|------|------|----------|",
         dim_table,
         "",
@@ -624,11 +726,13 @@ def _render_report_markdown(report: SegmentReport, df: pd.DataFrame, dims: list)
 
     # Scores overview table (sorted by overall score desc)
     if '_score_overall' in df.columns:
-        lines.append("## 線索評分總覽")
+        lines.append(f"## {copy['scores_overview']}")
         lines.append("")
         dim_headers = ' | '.join(d['label'] for d in dims)
         dim_seps = ' | '.join('----' for _ in dims)
-        lines.append(f"| 姓名 | 公司 | {dim_headers} | 綜合分 | Segment |")
+        lines.append(
+            f"| {copy['name']} | {copy['company']} | {dim_headers} | {copy['overall']} | {copy['segment']} |"
+        )
         lines.append(f"|------|------|{dim_seps}|--------|---------|")
         sorted_df = df.sort_values('_score_overall', ascending=False)
         for _, row in sorted_df.iterrows():
@@ -648,22 +752,27 @@ def _render_report_markdown(report: SegmentReport, df: pd.DataFrame, dims: list)
             continue
 
         avg = members['_score_overall'].mean() if '_score_overall' in members.columns else None
-        avg_str = f"，平均 {avg:.1f} 分" if avg is not None else ""
-        lines.append(f"## Segment {seg.segment_id}：{seg.name}（{actual_count} 人{avg_str}，分數區間 {seg.score_range}）")
+        avg_str = f", avg {avg:.1f}" if avg is not None else ""
+        lines.append(
+            f"## Segment {seg.segment_id}: {seg.name} ({actual_count}{avg_str}, range {seg.score_range})"
+        )
         lines.append("")
-        lines.append("**特徵：**")
+        lines.append(f"**{copy['features']}:**")
         for c in seg.characteristics:
             lines.append(f"- {c}")
         lines.append("")
-        lines.append(f"**建議動作：** {seg.recommended_action}")
+        lines.append(f"**{copy['action']}:** {seg.recommended_action}")
         lines.append("")
-        lines.append(f"**HubSpot 操作：** {seg.hubspot_suggestion}")
+        lines.append(f"**{copy['hubspot']}:** {seg.hubspot_suggestion}")
         lines.append("")
 
         # Member table (compact: one row per lead, scores only; reasons in CSV)
         dim_headers = ' | '.join(d['label'] for d in dims)
         dim_seps = ' | '.join('----' for _ in dims)
-        lines.append(f"| 姓名 | 公司 | 職位 | Email | {dim_headers} | 綜合 | Demo | 時程 |")
+        lines.append(
+            f"| {copy['name']} | {copy['company']} | {copy['title']} | {copy['email']} | "
+            f"{dim_headers} | {copy['overall']} | {copy['demo']} | {copy['timeline']} |"
+        )
         lines.append(f"|------|------|------|-------|{dim_seps}|------|------|------|")
         for _, m in members.sort_values('_score_overall', ascending=False).iterrows():
             name = m.get('name', '')
@@ -676,20 +785,7 @@ def _render_report_markdown(report: SegmentReport, df: pd.DataFrame, dims: list)
             timeline = m.get('project_timeline', '')
             lines.append(f"| {name} | {comp} | {title} | {email} | {dim_scores} | **{overall}** | {demo} | {timeline} |")
         lines.append("")
-        lines.append("*各維度評分依據詳見 CSV 中的 `_score_*_reason` 欄位。*")
-        lines.append("")
-
-    review = df[df['_segment'] == 'review']
-    if not review.empty:
-        lines.append(f"## 待人工確認（{len(review)} 人）")
-        lines.append("")
-        lines.append("以下線索未被自動分組，需人工確認：")
-        lines.append("")
-        lines.append("| 姓名 | 公司 | Email | 綜合分 | Demo |")
-        lines.append("|------|------|-------|--------|------|")
-        for _, m in review.iterrows():
-            overall = m.get('_score_overall', 0)
-            lines.append(f"| {m.get('name', '')} | {m.get('company', '')} | {m.get('email', '')} | {overall} | {m.get('demo_interest', '')} |")
+        lines.append(f"*{copy['reason_note']}*")
         lines.append("")
 
     return '\n'.join(lines)
@@ -704,11 +800,11 @@ def _render_email_drafts_markdown(
     seg_names = {s.segment_id: s.name for s in report.segments}
 
     lines = [
-        "# 郵件草稿（按分組 × 語言）",
+        "# Email drafts (by segment × language)",
         "",
-        "> 以下草稿可直接複製到 HubSpot Sequence/Template。",
-        "> `{{contact.firstname}}` 等為 HubSpot 個人化欄位，發送時自動替換。",
-        "> 語言版本依各線索的姓名/信箱域名自動判斷，每位收件人只收到一封。",
+        "> These drafts can be pasted into HubSpot Sequence/Template.",
+        "> `{{contact.firstname}}` and similar fields are HubSpot personalization tokens.",
+        "> Language versions are generated from detected recipient language; each recipient gets one language version only.",
         "",
     ]
 
@@ -718,7 +814,7 @@ def _render_email_drafts_markdown(
         if sid != current_seg:
             seg_members = df[df['_segment'] == sid]
             seg_label = seg_names.get(sid, sid)
-            lines.append(f"## Segment {sid}：{seg_label}（{len(seg_members)} 人）")
+            lines.append(f"## Segment {sid}: {seg_label} ({len(seg_members)} leads)")
             lines.append("")
             current_seg = sid
 
@@ -727,7 +823,7 @@ def _render_email_drafts_markdown(
             for _, r in lang_members.iterrows()
         )
         lang_label = LANG_LABELS.get(lang, lang)
-        lines.append(f"### {lang_label}（{len(lang_members)} 人：{recipient_names}）")
+        lines.append(f"### {lang_label} ({len(lang_members)} leads: {recipient_names})")
         lines.append("")
         lines.append(f"**Subject:** {draft.subject}")
         lines.append("")

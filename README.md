@@ -13,7 +13,7 @@ Each run produces three files in `configs/output/`:
 | File | Recipient | Description |
 |------|-----------|-------------|
 | `{prefix}-leads.csv` | Sales / BD | Cleaned and enriched lead list with `_segment` column; ready for HubSpot import |
-| `{prefix}-report.md` | Sales / BD | Segment definitions, follow-up recommendations, and per-lead score breakdown |
+| `{prefix}-report.md` | Sales / BD | Segment definitions, follow-up recommendations, compact score tables, and language auto-selected from lead data |
 | `{prefix}-email-drafts.md` | Sales / BD | Follow-up email drafts per segment, in the detected language of each recipient (EN / JA / zh-TW) |
 
 ---
@@ -74,7 +74,8 @@ event-lead-cli/
 ├── requirements.txt
 ├── data/                        ← place your CSV/Excel files here
 ├── configs/
-│   ├── event-template.yaml       ← config template
+│   ├── event-template.yaml       ← trade show / conference template
+│   ├── meetup-template.yaml      ← meetup / community template
 │   └── output/                  ← generated files appear here
 └── event_leads/                 ← source code
 ```
@@ -84,7 +85,7 @@ event-lead-cli/
 Open a terminal, navigate to the project folder, and run:
 
 ```bash
-cd /path/to/event-lead-agent
+cd /path/to/event-lead-cli
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -119,13 +120,16 @@ Common sources:
 - Badge scanner output → typically Excel
 - HubSpot business card scan export → CSV
 
-### Step 2 — Create an event config
+### Step 2 — Create a config (no manual template maintenance)
 
-Copy the included template and rename it:
+Generate a config file directly from a built-in template:
 
 ```bash
-cp configs/event-template.yaml configs/your-event-name.yaml
+python -m event_leads init-config --type event --name "Your Event Name" --date "2026-06-15" --location "Singapore"
+python -m event_leads init-config --type meetup --name "Your Meetup Name" --date "2026-06-20" --location "Tokyo"
 ```
+
+This command writes `configs/<slug>.yaml` for you, with `event` and `output.filename_prefix` already filled.
 
 Edit the following fields in the new file:
 
@@ -154,6 +158,7 @@ sources:
 
 output:
   filename_prefix: "your-event-name"
+  report_language: "auto"         # auto / en / ja / zh_tw
 ```
 
 To include multiple data sources, add additional entries under `sources:`:
@@ -180,6 +185,7 @@ sources:
 ```
 
 The terminal prints progress for each stage. Enrichment runs in parallel batches; typical runtimes are 2–4 minutes for ~40 leads and under 2 minutes for 800 leads.
+After one command, the CLI outputs all three deliverables automatically: `*-leads.csv`, `*-report.md`, and `*-email-drafts.md`.
 
 **To resume after an interruption** (network issue, API timeout, etc.) without re-running the LLM enrichment stage:
 
@@ -191,8 +197,8 @@ The terminal prints progress for each stage. Enrichment runs in parallel batches
 
 Open `configs/output/` and verify:
 
-- **report.md** — confirm segment definitions and recommended actions are reasonable
-- **email-drafts.md** — confirm language detection is correct for each segment
+- **report.md** — confirm segment definitions and recommended actions are reasonable; report language is auto-selected from lead-language majority
+- **email-drafts.md** — confirm generated language groups (single / bilingual / trilingual) match your lead mix
 - **leads.csv** — open in Excel and confirm the `_segment` column is populated for all rows
 
 ---
@@ -248,7 +254,7 @@ These are the field names the pipeline understands. Map your source column heade
 
 ### Scoring dimensions
 
-The LLM scores each lead on four dimensions (0–10). For every dimension, it also provides a one-sentence justification in Traditional Chinese, explaining why it assigned that score. This makes each score transparent and auditable by the sales team.
+The LLM scores each lead on four dimensions (0–10). For every dimension, it also provides a one-sentence justification, so each score is transparent and auditable by sales.
 
 The overall score is a weighted average. Weights must sum to 1.0. Descriptions and weights can be adjusted per event in the `scoring:` section of the config.
 
@@ -293,6 +299,16 @@ Set `encoding: utf-8-sig` in the source config. For Traditional Chinese exports 
 
 Language is inferred from the lead's name characters and email domain: Chinese characters → `zh_tw`, `.jp` domain or Japanese characters → `ja`, all others → `en`. To override, manually edit the `_lang` column in the output CSV.
 
+**Report language is not what you want**
+
+By default, report language is selected from the majority lead language (`en`, `ja`, `zh_tw`). To force one language, set:
+
+```yaml
+output:
+  filename_prefix: "your-event-name"
+  report_language: "en"   # en / ja / zh_tw / auto
+```
+
 ---
 
 ## Project structure
@@ -305,7 +321,8 @@ event-lead-cli/
 ├── requirements.txt
 ├── data/                    ← source CSV/Excel files
 ├── configs/
-│   ├── event-template.yaml  ← example config; copy for each event
+│   ├── event-template.yaml   ← trade show / conference template
+│   ├── meetup-template.yaml  ← meetup / community template
 │   └── output/
 │       ├── checkpoints/     ← intermediate state for --resume (safe to delete after a run)
 │       ├── *-leads.csv
