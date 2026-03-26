@@ -180,12 +180,20 @@ sources:
 
 ### Step 3 — Run the pipeline
 
+Optional preflight check:
+
+```bash
+./scripts/smoke-test.sh configs/your-event-name.yaml
+```
+
 ```bash
 ./run_enrich.sh configs/your-event-name.yaml
 ```
 
 The terminal prints progress for each stage. Enrichment runs in parallel batches; typical runtimes are 2–4 minutes for ~40 leads and under 2 minutes for 800 leads.
 After one command, the CLI outputs all three deliverables automatically: `*-leads.csv`, `*-report.md`, and `*-email-drafts.md`.
+
+Segmentation is fixed to exactly 3 groups (A/B/C). The model only sets score boundaries; the assignment is local and deterministic.
 
 **To resume after an interruption** (network issue, API timeout, etc.) without re-running the LLM enrichment stage:
 

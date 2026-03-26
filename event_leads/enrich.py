@@ -134,7 +134,7 @@ class SegmentThreshold(BaseModel):
 class SegmentThresholds(BaseModel):
     """Output of the single threshold-definition LLM call."""
     thresholds: List[SegmentThreshold] = Field(
-        description="3-4 segments ordered from highest to lowest min_score; together they must cover 0–10 with no gaps"
+        description="Exactly 3 segments (A/B/C) ordered from highest to lowest min_score; together they must cover 0–10 with no gaps"
     )
     overview: str = Field(description="One-sentence executive summary of the lead pool in Traditional Chinese")
 
@@ -188,11 +188,13 @@ THRESHOLD_SYSTEM_PROMPT = """\
 You are a B2B sales strategist analyzing event leads for Dify.
 
 You will receive the distribution of overall_score values (0–10) for a set of leads.
-Your job is to define 3–4 segments with clear score thresholds, ordered A (highest) through C or D (lowest).
+Your job is to define EXACTLY 3 segments with clear score thresholds: A (highest), B (middle), C (lowest).
 
 Rules:
+- Return exactly 3 threshold objects, with segment_id fixed to A, B, C.
 - thresholds must cover the FULL range 0–10 with no gaps.
-  The top segment's max_score must be 10.0; the bottom segment's min_score must be 0.0.
+  A.max_score must be 10.0; C.min_score must be 0.0.
+- Order must be A first, then B, then C.
 - Base boundaries on natural breaks in the provided score list, not on fixed quartiles.
 - recommended_action and hubspot_suggestion must be actionable and specific.
 - Do NOT assign individual leads — only define the thresholds.
@@ -289,6 +291,24 @@ REPORT_COPY = {
         'hubspot': 'HubSpot 操作',
         'reason_note': '各維度評分依據詳見 CSV 的 `_score_*_reason` 欄位。',
     },
+}
+
+FALLBACK_SEGMENTS = {
+    'en': [
+        ("A", "High-intent decision makers", "Prioritize direct outreach, schedule demo within 7 days."),
+        ("B", "Medium-intent evaluators", "Send tailored materials and follow up within 14 days."),
+        ("C", "Low-intent or early-stage", "Nurture with resources and re-engage next cycle."),
+    ],
+    'ja': [
+        ("A", "高意向の意思決定層", "優先連絡し、7日以内にデモ日程を設定。"),
+        ("B", "中意向の検討層", "資料提供後、14日以内に再フォロー。"),
+        ("C", "低意向・情報収集層", "ナーチャリング中心で次回接点を設計。"),
+    ],
+    'zh_tw': [
+        ("A", "高意向決策者", "優先聯繫，7 天內安排 demo。"),
+        ("B", "中意向評估中", "提供對應資料，14 天內再次跟進。"),
+        ("C", "低意向或早期探索", "以內容養成為主，安排下次觸達。"),
+    ],
 }
 
 
@@ -558,6 +578,59 @@ def _map_to_segments(df: pd.DataFrame, thresholds: list) -> 'pd.Series':
     return df['_score_overall'].apply(_assign)
 
 
+def _fallback_three_thresholds(scores: list, report_lang: str) -> SegmentThresholds:
+    """Deterministic fallback when LLM thresholds are malformed."""
+    s = pd.Series(scores, dtype=float)
+    q67 = float(s.quantile(0.67))
+    q33 = float(s.quantile(0.33))
+    a_min = max(0.0, min(10.0, round(q67, 1)))
+    b_min = max(0.0, min(a_min, round(q33, 1)))
+    c_min = 0.0
+    b_max = round(max(b_min, a_min - 0.1), 1)
+    c_max = round(max(c_min, b_min - 0.1), 1)
+
+    defaults = FALLBACK_SEGMENTS.get(report_lang, FALLBACK_SEGMENTS['en'])
+    thresholds = [
+        SegmentThreshold(
+            segment_id=defaults[0][0], name=defaults[0][1], min_score=a_min, max_score=10.0,
+            characteristics=["Top score band", "Clear near-term potential"],
+            recommended_action=defaults[0][2],
+            hubspot_suggestion="Create high-priority list and immediate follow-up task.",
+        ),
+        SegmentThreshold(
+            segment_id=defaults[1][0], name=defaults[1][1], min_score=b_min, max_score=b_max,
+            characteristics=["Mid score band", "Needs qualification"],
+            recommended_action=defaults[1][2],
+            hubspot_suggestion="Use nurture sequence and schedule second touchpoint.",
+        ),
+        SegmentThreshold(
+            segment_id=defaults[2][0], name=defaults[2][1], min_score=c_min, max_score=c_max,
+            characteristics=["Lower score band", "Longer cycle or weaker signal"],
+            recommended_action=defaults[2][2],
+            hubspot_suggestion="Tag for long-term nurture and periodic re-engagement.",
+        ),
+    ]
+    return SegmentThresholds(thresholds=thresholds, overview="Fallback thresholds were applied due to malformed model output.")
+
+
+def _normalize_thresholds(thresholds_result: SegmentThresholds, scores: list, report_lang: str) -> SegmentThresholds:
+    """Force exactly three ordered segments A/B/C; fallback if needed."""
+    sorted_t = sorted(thresholds_result.thresholds, key=lambda x: x.min_score, reverse=True)
+    if len(sorted_t) != 3:
+        return _fallback_three_thresholds(scores, report_lang)
+
+    ids = [t.segment_id for t in sorted_t]
+    if ids != ['A', 'B', 'C']:
+        return _fallback_three_thresholds(scores, report_lang)
+
+    # Ensure full coverage and monotonic order.
+    sorted_t[0].max_score = 10.0
+    sorted_t[2].min_score = 0.0
+    if not (sorted_t[0].min_score >= sorted_t[1].min_score >= sorted_t[2].min_score):
+        return _fallback_three_thresholds(scores, report_lang)
+    return SegmentThresholds(thresholds=sorted_t, overview=thresholds_result.overview)
+
+
 def _build_report_from_thresholds(
     thresholds_result: 'SegmentThresholds', df: pd.DataFrame
 ) -> SegmentReport:
@@ -635,12 +708,13 @@ def generate_segment_report(df: pd.DataFrame, config: Optional[dict] = None) -> 
             {"role": "system", "content": THRESHOLD_SYSTEM_PROMPT},
             {"role": "user", "content": (
                 f"Lead pool score distribution:\n{score_stats}\n\n"
-                f"Define 3–4 segments with score thresholds covering 0–10.\n"
+                f"Define exactly 3 segments (A/B/C) with score thresholds covering 0–10.\n"
                 f"Write all output fields in: {report_lang_instruction}."
             )},
         ],
         max_retries=2,
     )
+    thresholds_result = _normalize_thresholds(thresholds_result, scores, report_lang)
 
     df['_segment'] = _map_to_segments(df, thresholds_result.thresholds)
 

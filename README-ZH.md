@@ -179,11 +179,19 @@ sources:
 
 ### 第三步 — 运行
 
+可选：先做一次环境与配置自检：
+
+```bash
+./scripts/smoke-test.sh configs/新活动名称.yaml
+```
+
 ```bash
 ./run_enrich.sh configs/新活动名称.yaml
 ```
 
 终端会实时打印各阶段进度。评分阶段并发执行，约 40 条线索需 2–4 分钟，800 条线索约 2 分钟以内。一次命令会自动产出三份文件：`*-leads.csv`、`*-report.md`、`*-email-drafts.md`。
+
+分组数量固定为 3 组（A/B/C）。LLM 只负责给分界线，最终分配在本地完成，结果更稳定。
 
 **若中途中断**（网络问题、API 超时等），使用 `--resume` 参数续跑，无需重新调用 LLM：
 
