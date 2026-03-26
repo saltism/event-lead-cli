@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Local raw data and generated outputs
+data/
+output/
+configs/output/
+
+# Event-specific local config (contains real source mappings)
+configs/cio-forum-2026.yaml

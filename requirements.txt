@@ -1,0 +1,7 @@
+pandas
+rapidfuzz
+pyyaml
+click
+openpyxl
+instructor
+openai
