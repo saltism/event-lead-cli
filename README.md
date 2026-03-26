@@ -6,6 +6,16 @@ A command-line tool that processes raw event leads into scored, segmented, and e
 
 ---
 
+## 30-second quick start
+
+```bash
+cd /path/to/event-lead-cli && source .venv/bin/activate
+python -m event_leads init-config --type event --name "Your Event Name" --date "2026-06-15" --location "Singapore"
+./run_enrich.sh configs/your-event-name.yaml
+```
+
+---
+
 ## Output
 
 Each run produces three files in `configs/output/`:

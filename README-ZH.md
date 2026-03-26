@@ -6,6 +6,16 @@
 
 ---
 
+## 30 秒快速开始
+
+```bash
+cd /path/to/event-lead-cli && source .venv/bin/activate
+python -m event_leads init-config --type event --name "活动名称" --date "2026-06-15" --location "Singapore"
+./run_enrich.sh configs/活动名称.yaml
+```
+
+---
+
 ## 输出文件
 
 每次运行后，`configs/output/` 目录下会生成三个文件：
