@@ -157,6 +157,8 @@ Brand rules:
 - Do NOT say "open-source" or highlight GitHub stars.
 - Do NOT pile company stats (funding, deployment numbers) in outreach emails.
 - Legal entity names: English → LangGenius KK | Japanese → 株式会社LangGenius（Dify）| Traditional Chinese → Dify（株式会社LangGenius）
+- Never use "Fifty" or any variant as company/product name.
+- If legal entity is not needed, use product name "Dify" only.
 """
 
 DIFY_CAPABILITY_MAP = """\
@@ -779,6 +781,12 @@ Rules:
 - CTA: [DEMO_LINK] for demo booking, [RESOURCE_LINK] for resources
 - High-intent segment (demo requested) → ask directly for demo; low-intent → share resources only
 - Do NOT mention "open-source" or GitHub stars
+- Brand name guardrail:
+  - Never output "Fifty" (or variants) as brand/entity.
+  - Use only these legal-entity forms when needed:
+    - English: LangGenius KK
+    - Japanese: 株式会社LangGenius（Dify） or Dify（株式会社LangGenius）
+    - Traditional Chinese: Dify（株式会社LangGenius）
 """
 
         draft = client.chat.completions.create(
